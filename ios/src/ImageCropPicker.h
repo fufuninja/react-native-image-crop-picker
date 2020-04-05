@@ -33,13 +33,17 @@
 #import "Compression.h"
 #import <math.h>
 
+#import <TOCropViewController/TOCropViewController.h>
+
+
 @interface ImageCropPicker : NSObject<
 UIImagePickerControllerDelegate,
 UINavigationControllerDelegate,
 RCTBridgeModule,
 QBImagePickerControllerDelegate,
 RSKImageCropViewControllerDelegate,
-RSKImageCropViewControllerDataSource>
+RSKImageCropViewControllerDataSource,
+TOCropViewControllerDelegate>
 
 typedef enum selectionMode {
     CAMERA,

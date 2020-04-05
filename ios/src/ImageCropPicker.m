@@ -176,7 +176,7 @@ RCT_EXPORT_METHOD(openCamera:(NSDictionary *)options
         picker.sourceType = UIImagePickerControllerSourceTypeCamera;
 
         NSString *mediaType = [self.options objectForKey:@"mediaType"];
-        
+
         if ([mediaType isEqualToString:@"video"]) {
             NSArray *availableTypes = [UIImagePickerController availableMediaTypesForSourceType:UIImagePickerControllerSourceTypeCamera];
 
@@ -203,7 +203,7 @@ RCT_EXPORT_METHOD(openCamera:(NSDictionary *)options
 
 - (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info {
     NSString* mediaType = [info objectForKey:UIImagePickerControllerMediaType];
-    
+
     if (CFStringCompare ((__bridge CFStringRef) mediaType, kUTTypeMovie, 0) == kCFCompareEqualTo) {
         NSURL *url = [info objectForKey:UIImagePickerControllerMediaURL];
         AVURLAsset *asset = [AVURLAsset assetWithURL:url];
@@ -316,7 +316,7 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
             imagePickerController.minimumNumberOfSelection = abs([[self.options objectForKey:@"minFiles"] intValue]);
             imagePickerController.maximumNumberOfSelection = abs([[self.options objectForKey:@"maxFiles"] intValue]);
             imagePickerController.showsNumberOfSelectedAssets = [[self.options objectForKey:@"showsSelectedCount"] boolValue];
-            
+
             NSArray *smartAlbums = [self.options objectForKey:@"smartAlbums"];
             if (smartAlbums != nil) {
                 NSDictionary *albums = @{
@@ -349,7 +349,7 @@ RCT_EXPORT_METHOD(openPicker:(NSDictionary *)options
                                          @"Animated" : @(PHAssetCollectionSubtypeSmartAlbumAnimated),
                                          @"LongExposure" : @(PHAssetCollectionSubtypeSmartAlbumLongExposures),
                                          };
-                
+
                 NSMutableArray *albumsToShow = [NSMutableArray arrayWithCapacity:smartAlbums.count];
                 for (NSString* smartAlbum in smartAlbums) {
                     if ([albums objectForKey:smartAlbum] != nil) {
@@ -391,7 +391,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
         if (error) {
             self.reject(ERROR_CROPPER_IMAGE_NOT_FOUND_KEY, ERROR_CROPPER_IMAGE_NOT_FOUND_MSG, nil);
         } else {
-            [self startCropping:[image fixOrientation]];
+            [self cropImage:[image fixOrientation]];
         }
     }];
 }
@@ -557,7 +557,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
     PHImageRequestOptions* options = [[PHImageRequestOptions alloc] init];
     options.synchronous = NO;
     options.networkAccessAllowed = YES;
-    
+
     if ([[[self options] objectForKey:@"multiple"] boolValue]) {
         NSMutableArray *selections = [[NSMutableArray alloc] init];
 
@@ -607,7 +607,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
                              [lock lock];
                              @autoreleasepool {
                                  UIImage *imgT = [UIImage imageWithData:imageData];
-                                 
+
                                  Boolean forceJpg = [[self.options valueForKey:@"forceJpg"] boolValue];
 
                                  NSNumber *compressQuality = [self.options valueForKey:@"compressImageQuality"];
@@ -765,7 +765,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
         self.croppingFile[@"modifcationDate"] = modificationDate;
         NSLog(@"CroppingFile %@", self.croppingFile);
 
-        [self startCropping:[image fixOrientation]];
+        [self cropImage:[image fixOrientation]];
     } else {
         ImageResult *imageResult = [self.compression compressImage:[image fixOrientation]  withOptions:self.options];
         NSString *filePath = [self persistFile:imageResult.data];
@@ -860,10 +860,10 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
     }]];
 }
 
-- (void) dismissCropper:(RSKImageCropViewController*)controller selectionDone:(BOOL)selectionDone completion:(void (^)(void))completion {
+- (void) dismissCropper:(UIViewController*)controller selectionDone:(BOOL)selectionDone completion:(void (^)(void))completion {
     switch (self.currentSelectionMode) {
         case CROPPING:
-            [controller dismissViewControllerAnimated:YES completion:completion];
+            [controller dismissViewControllerAnimated:FALSE completion:completion];
             break;
         case PICKER:
             if (selectionDone) {
@@ -881,7 +881,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
 }
 
 // The original image has been cropped.
-- (void)imageCropViewController:(RSKImageCropViewController *)controller
+- (void)imageCropViewController:(UIViewController *)controller
                    didCropImage:(UIImage *)croppedImage
                   usingCropRect:(CGRect)cropRect {
 
@@ -889,7 +889,7 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
     // so resize image
     CGSize desiredImageSize = CGSizeMake([[[self options] objectForKey:@"width"] intValue],
                                          [[[self options] objectForKey:@"height"] intValue]);
-    
+
     UIImage *resizedImage = [croppedImage resizedImageToFitInSize:desiredImageSize scaleIfSmaller:YES];
     ImageResult *imageResult = [self.compression compressImage:resizedImage withOptions:self.options];
 
@@ -959,6 +959,45 @@ RCT_EXPORT_METHOD(openCropper:(NSDictionary *)options
              @"width": [NSNumber numberWithFloat: CGRectGetWidth(rect)],
              @"height": [NSNumber numberWithFloat: CGRectGetHeight(rect)]
              };
+}
+
+#pragma mark - TOCCropViewController Implementation
+- (void)cropImage:(UIImage *)image {
+    TOCropViewController *cropVC;
+    if ([[[self options] objectForKey:@"cropperCircleOverlay"] boolValue]) {
+        cropVC = [[TOCropViewController alloc] initWithCroppingStyle:TOCropViewCroppingStyleCircular image:image];
+    } else {
+        cropVC = [[TOCropViewController alloc] initWithImage:image];
+    }
+
+    cropVC.title = [[self options] objectForKey:@"cropperToolbarTitle"];
+    cropVC.delegate = self;
+
+    NSString *cropperChooseText = [self.options objectForKey:@"cropperChooseText"];
+    NSString *cropperCancelText = [self.options objectForKey:@"cropperCancelText"];
+
+    cropVC.doneButtonTitle = cropperChooseText;
+    cropVC.cancelButtonTitle = cropperCancelText;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[self getRootVC] presentViewController:cropVC animated:FALSE completion:nil];
+    });
+}
+#pragma mark - TOCropViewController Delegate
+- (void)cropViewController:(TOCropViewController *)cropViewController didCropToImage:(UIImage *)image withRect:(CGRect)cropRect angle:(NSInteger)angle {
+    [self imageCropViewController:cropViewController didCropImage:image usingCropRect:cropRect];
+}
+
+- (void)cropViewController:(TOCropViewController *)cropViewController didCropToCircularImage:(UIImage *)image withRect:(CGRect)cropRect angle:(NSInteger)angle {
+    [self imageCropViewController:cropViewController didCropImage:image usingCropRect:cropRect];
+}
+
+- (void)cropViewController:(TOCropViewController *)cropViewController didFinishCancelled:(BOOL)cancelled {
+    [self dismissCropper:cropViewController selectionDone:NO completion:[self waitAnimationEnd:^{
+        if (self.currentSelectionMode == CROPPING) {
+            self.reject(ERROR_PICKER_CANCEL_KEY, ERROR_PICKER_CANCEL_MSG, nil);
+        }
+    }]];
 }
 
 @end
